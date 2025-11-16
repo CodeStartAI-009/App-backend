@@ -5,30 +5,27 @@ const cors = require("cors");
 
 const app = express();
 
-// Correct CORS config (Fixes Expo + Vercel issues)
+// CORS (Works for Expo Web + Mobile)
 app.use(cors({
-  origin: "*",   // allow all for now (development)
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  origin: "*",
+  methods: ["GET", "POST", "PUT", "DELETE"],
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
 
-// Ensure preflight requests are handled
-app.options("*", cors());
-
-// Middleware
+// Body parser
 app.use(express.json());
 
-// Connect DB
+// Connect database
 connectDB();
 
 // Routes
 app.use("/auth", require("./routes/auth"));
 
-// Root route
+// Test route
 app.get("/", (req, res) => {
   res.send("API Running");
 });
 
-// Server running
+// Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
