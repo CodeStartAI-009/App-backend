@@ -1,28 +1,40 @@
 // routes/profile.js
 const express = require("express");
+const bcrypt = require("bcryptjs");
 const auth = require("../middleware/auth");
 const User = require("../models/User");
 
 const router = express.Router();
 
-// Get current user's profile
+// GET PROFILE
 router.get("/me", auth, async (req, res) => {
-  res.json({ ok: true, user: req.user });
+  res.json({
+    ok: true,
+    user: req.user,
+  });
 });
 
-// Update profile (display name, bio, avatarUrl)
+// UPDATE PROFILE
 router.patch("/me", auth, async (req, res) => {
   try {
-    const { name, bio, avatarUrl } = req.body;
+    const { name, avatarUrl, monthlyIncome, phone, upi, bankNumber } = req.body;
     const user = await User.findById(req.user._id);
-    if (name !== undefined) user.name = name;
-    if (bio !== undefined) user.bio = bio;
-    if (avatarUrl !== undefined) user.avatarUrl = avatarUrl;
+
+    if (name) user.name = name;
+    if (avatarUrl) user.avatarUrl = avatarUrl;
+    if (monthlyIncome) user.monthlyIncome = monthlyIncome;
+    if (phone) user.phone = phone;
+
+    // Hash sensitive fields
+    if (upi || bankNumber) {
+      await user.setSensitiveData({ upi, bankNumber });
+    }
+
     await user.save();
+
     res.json({ ok: true, user });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Server error" });
+    res.status(500).json({ error: "Profile update failed" });
   }
 });
 
