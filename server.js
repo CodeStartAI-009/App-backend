@@ -1,31 +1,39 @@
-require("dotenv").config();
+// server.js
 const express = require("express");
-const connectDB = require("./config/db");
 const cors = require("cors");
+const mongoose = require("mongoose");
+const config = require("./config"); // loads config/index.js
+const authRoutes = require("./routes/auth");
+const profileRoutes = require("./routes/profile");
 
-const app = express();
+async function start() {
+  try {
+    // Connect MongoDB
+    await mongoose.connect(config.mongoUri, {
+      // Mongoose v7 defaults are fine; explicit options kept for compatibility
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    });
+    console.log("Connected to MongoDB");
+  } catch (err) {
+    console.error("MongoDB connection failed:", err);
+    process.exit(1);
+  }
 
-// CORS (Works for Expo Web + Mobile)
-app.use(cors({
-  origin: "*",
-  methods: ["GET", "POST", "PUT", "DELETE"],
-  allowedHeaders: ["Content-Type", "Authorization"]
-}));
+  const app = express();
+  app.use(cors());
+  app.use(express.json());
 
-// Body parser
-app.use(express.json());
+  // Routes
+  app.use("/api/auth", authRoutes);
+  app.use("/api/profile", profileRoutes);
 
-// Connect database
-connectDB();
+  app.get("/", (req, res) => res.send("WalletWave backend (MongoDB)"));
 
-// Routes
-app.use("/auth", require("./routes/auth"));
+  app.listen(config.port, () => console.log(`Server started on http://localhost:${config.port}`));
+}
 
-// Test route
-app.get("/", (req, res) => {
-  res.send("API Running");
+start().catch((err) => {
+  console.error("Failed to start", err);
+  process.exit(1);
 });
-
-// Start server
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
