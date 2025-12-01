@@ -3,42 +3,46 @@ const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const validator = require("validator");
-const config = require("../config"); // loads config/index.js
+const config = require("../config");
 const User = require("../models/User");
 const Otp = require("../models/Otp");
 const { generateNumericOtp } = require("../utils/generateOtp");
 const { sendMail } = require("../utils/mailer");
 
 const router = express.Router();
-const SALT_ROUNDS = 10;
+const SALT = 10;
 
-/**
- * Helper to create JWT
- */
-function createJwt(payload, expiresIn = config.jwt.expiresIn) {
-  return jwt.sign(payload, config.jwt.secret, { expiresIn });
-}
+/* ---------------------------
+   JWT Helper
+---------------------------- */
+const createJwt = (payload, exp = config.jwt.expiresIn) =>
+  jwt.sign(payload, config.jwt.secret, { expiresIn: exp });
 
-/**
- * POST /api/auth/signup
- */
+/* ---------------------------
+   SIGNUP
+---------------------------- */
 router.post("/signup", async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
-    if (!email || !validator.isEmail(String(email))) {
+    if (!email || !validator.isEmail(String(email)))
       return res.status(400).json({ error: "Valid email required" });
-    }
-    if (!password || password.length < 8) {
+
+    if (!password || password.length < 8)
       return res.status(400).json({ error: "Password must be 8+ characters" });
-    }
 
-    const emailLower = String(email).toLowerCase();
-    const existing = await User.findOne({ email: emailLower });
-    if (existing) return res.status(409).json({ error: "Email already in use" });
+    const emailLower = email.toLowerCase();
 
-    const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
-    const user = await User.create({ name: name || null, email: emailLower, passwordHash });
+    const exists = await User.findOne({ email: emailLower });
+    if (exists) return res.status(409).json({ error: "Email already in use" });
+
+    const passwordHash = await bcrypt.hash(password, SALT);
+
+    const user = await User.create({
+      name: name || null,
+      email: emailLower,
+      passwordHash,
+    });
 
     return res.status(201).json({ ok: true, userId: user._id });
   } catch (err) {
@@ -47,90 +51,126 @@ router.post("/signup", async (req, res) => {
   }
 });
 
-/**
- * POST /api/auth/login
- */
+/* ---------------------------
+   LOGIN
+---------------------------- */
 router.post("/login", async (req, res) => {
   try {
     const { emailOrPhone, password } = req.body;
-    if (!emailOrPhone || !password) return res.status(400).json({ error: "Missing fields" });
 
+    console.log("\n====== LOGIN ATTEMPT ======");
+    console.log("Incoming:", req.body);
+
+    if (!emailOrPhone || !password)
+      return res.status(400).json({ error: "Missing fields" });
+
+    const identifier = String(emailOrPhone).trim();
     let user = null;
-    const identifier = String(emailOrPhone);
 
     if (validator.isEmail(identifier)) {
+      console.log("Attempting email login:", identifier.toLowerCase());
       user = await User.findOne({ email: identifier.toLowerCase() });
     } else {
+      console.log("Attempting phone login:", identifier);
       user = await User.findOne({ phone: identifier });
     }
 
-    if (!user) return res.status(401).json({ error: "Invalid credentials" });
+    if (!user) {
+      console.log("NO USER FOUND");
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    console.log("User found:", user.email);
 
     const match = await bcrypt.compare(password, user.passwordHash);
+    console.log("Password match:", match);
+
     if (!match) return res.status(401).json({ error: "Invalid credentials" });
 
     const token = createJwt({ sub: user._id.toString() });
 
+    console.log("SUCCESS: Token issued");
+
     return res.json({
       ok: true,
       token,
-      user: { id: user._id, email: user.email, name: user.name, avatarUrl: user.avatarUrl },
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        avatarUrl: user.avatarUrl || null,
+      },
     });
+
   } catch (err) {
     console.error("Login error:", err);
     return res.status(500).json({ error: "Server error" });
   }
 });
 
-/**
- * POST /api/auth/forgot-password
- * Creates an OTP (hashed) and emails it to the user (or logs if mail not configured).
- */
+/* ---------------------------
+   FORGOT PASSWORD → SEND OTP
+---------------------------- */
 router.post("/forgot-password", async (req, res) => {
   try {
     const { email } = req.body;
-    if (!email || !validator.isEmail(String(email))) return res.status(400).json({ error: "Valid email required" });
 
-    const emailLower = String(email).toLowerCase();
+    if (!email || !validator.isEmail(email))
+      return res.status(400).json({ error: "Valid email required" });
+
+    const emailLower = email.toLowerCase();
     const user = await User.findOne({ email: emailLower });
 
-    // For privacy, respond ok even if user not found.
-    if (!user) {
-      return res.json({ ok: true });
-    }
+    // Privacy — always respond OK
+    if (!user) return res.json({ ok: true });
 
-    const plainOtp = generateNumericOtp(6);
-    const otpHash = await bcrypt.hash(plainOtp, SALT_ROUNDS);
-    const expiresAt = new Date(Date.now() + config.otpExpiryMinutes * 60 * 1000);
+    const otp = generateNumericOtp(6);
+    const otpHash = await bcrypt.hash(otp, SALT);
 
-    await Otp.create({ email: emailLower, otpHash, purpose: "reset", expiresAt, used: false });
+    await Otp.create({
+      email: emailLower,
+      otpHash,
+      used: false,
+      purpose: "reset",
+      expiresAt: new Date(Date.now() + config.otpExpiryMinutes * 60000),
+    });
 
-    const html = `<p>Your WalletWave password reset code is: <strong>${plainOtp}</strong></p><p>This code expires in ${config.otpExpiryMinutes} minutes.</p>`;
-    await sendMail(emailLower, "WalletWave Password Reset Code", html);
+    await sendMail(
+      emailLower,
+      "WalletWave Password Reset OTP",
+      `<p>Your OTP is:</p>
+       <h2>${otp}</h2>
+       <p>Expires in ${config.otpExpiryMinutes} minutes.</p>`
+    );
 
     return res.json({ ok: true });
   } catch (err) {
-    console.error("Forgot-password error:", err);
+    console.error("Forgot password error:", err);
     return res.status(500).json({ error: "Server error" });
   }
 });
 
-/**
- * POST /api/auth/verify-otp
- * Verifies otp and returns a short-lived reset token.
- */
+/* ---------------------------
+   VERIFY OTP
+---------------------------- */
 router.post("/verify-otp", async (req, res) => {
   try {
     const { email, otp } = req.body;
-    if (!email || !otp) return res.status(400).json({ error: "Missing fields" });
 
-    const emailLower = String(email).toLowerCase();
+    if (!email || !otp)
+      return res.status(400).json({ error: "Missing fields" });
 
-    // Find most recent unused OTP for this email and purpose
-    const record = await Otp.findOne({ email: emailLower, purpose: "reset", used: false }).sort({ createdAt: -1 });
-    if (!record) return res.status(400).json({ error: "Invalid or expired OTP" });
+    const emailLower = email.toLowerCase();
 
-    if (record.expiresAt < new Date()) return res.status(400).json({ error: "OTP expired" });
+    const record = await Otp.findOne({
+      email: emailLower,
+      purpose: "reset",
+      used: false,
+    }).sort({ createdAt: -1 });
+
+    if (!record) return res.status(400).json({ error: "Invalid OTP" });
+    if (record.expiresAt < new Date())
+      return res.status(400).json({ error: "OTP expired" });
 
     const ok = await bcrypt.compare(String(otp), record.otpHash);
     if (!ok) return res.status(400).json({ error: "Invalid OTP" });
@@ -138,43 +178,47 @@ router.post("/verify-otp", async (req, res) => {
     record.used = true;
     await record.save();
 
-    const resetToken = jwt.sign({ sub: record.email, type: "reset" }, config.jwt.secret, { expiresIn: "15m" });
+    const resetToken = createJwt(
+      { sub: emailLower, type: "reset" },
+      "15m"
+    );
 
     return res.json({ ok: true, resetToken });
   } catch (err) {
-    console.error("Verify-otp error:", err);
+    console.error("Verify OTP error:", err);
     return res.status(500).json({ error: "Server error" });
   }
 });
 
-/**
- * POST /api/auth/reset-password
- * Accepts either resetToken OR email + newPassword (if you want to implement otp+email flow)
- */
+/* ---------------------------
+   RESET PASSWORD
+---------------------------- */
 router.post("/reset-password", async (req, res) => {
   try {
     const { resetToken, email, newPassword } = req.body;
 
-    if (!newPassword || newPassword.length < 8) return res.status(400).json({ error: "Password must be 8+ chars" });
+    if (!newPassword || newPassword.length < 8)
+      return res.status(400).json({ error: "Password must be 8+ chars" });
 
-    let targetEmail = email ? String(email).toLowerCase() : null;
+    let targetEmail = email?.toLowerCase();
 
     if (resetToken) {
       try {
         const payload = jwt.verify(resetToken, config.jwt.secret);
-        if (payload.type !== "reset") throw new Error("Invalid token");
+
+        if (payload.type !== "reset")
+          return res.status(400).json({ error: "Invalid reset token" });
+
         targetEmail = payload.sub;
-      } catch (err) {
-        return res.status(400).json({ error: "Invalid or expired reset token" });
+      } catch {
+        return res.status(400).json({ error: "Expired or invalid reset token" });
       }
     }
-
-    if (!targetEmail) return res.status(400).json({ error: "Missing email" });
 
     const user = await User.findOne({ email: targetEmail });
     if (!user) return res.status(404).json({ error: "User not found" });
 
-    user.passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+    user.passwordHash = await bcrypt.hash(newPassword, SALT);
     await user.save();
 
     return res.json({ ok: true });
