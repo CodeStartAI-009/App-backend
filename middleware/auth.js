@@ -6,17 +6,45 @@ const User = require("../models/User");
 async function auth(req, res, next) {
   try {
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+
+    // No header
+    if (!authHeader) {
+      console.log("❌ No Authorization header");
       return res.status(401).json({ error: "Unauthorized" });
     }
+
+    // Wrong format
+    if (!authHeader.startsWith("Bearer ")) {
+      console.log("❌ Invalid Authorization format");
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    // Extract token
     const token = authHeader.split(" ")[1];
-    const payload = jwt.verify(token, config.jwt.secret);
+
+    // Verify token
+    let payload;
+    try {
+      payload = jwt.verify(token, config.jwt.secret);
+    } catch (e) {
+      console.log("❌ Invalid JWT:", e.message);
+      return res.status(401).json({ error: "Invalid or expired token" });
+    }
+
+    // Fetch user
     const user = await User.findById(payload.sub).select("-passwordHash");
-    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    if (!user) {
+      console.log("❌ User not found for token:", payload.sub);
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    // Attach user to request
     req.user = user;
+
     next();
   } catch (err) {
-    return res.status(401).json({ error: "Unauthorized", details: err.message });
+    console.error("❌ Auth middleware error:", err);
+    return res.status(401).json({ error: "Unauthorized" });
   }
 }
 

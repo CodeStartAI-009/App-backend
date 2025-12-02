@@ -108,13 +108,10 @@ router.post("/login", async (req, res) => {
     return res.status(500).json({ error: "Server error" });
   }
 });
-
-/* ============================================================
-   FORGOT PASSWORD → SEND OTP
-============================================================ */
 router.post("/forgot-password", async (req, res) => {
   try {
     const { email } = req.body;
+    console.log("📩 Forgot-password request:", email);
 
     if (!email || !validator.isEmail(email))
       return res.status(400).json({ error: "Valid email required" });
@@ -122,9 +119,8 @@ router.post("/forgot-password", async (req, res) => {
     const emailLower = email.toLowerCase();
     const user = await User.findOne({ email: emailLower });
 
-    // Always return success for privacy
     if (!user) {
-      console.log("Email not registered — silent OK.");
+      console.log("ℹ No user found — silent OK");
       return res.json({ ok: true });
     }
 
@@ -134,25 +130,28 @@ router.post("/forgot-password", async (req, res) => {
     await Otp.create({
       email: emailLower,
       otpHash,
-      purpose: "reset",
       used: false,
-      expiresAt: new Date(Date.now() + config.otpExpiryMinutes * 60000),
+      purpose: "reset",
+      expiresAt: new Date(Date.now() + 10 * 60000), // 10 min
     });
+
+    console.log("✔ OTP generated:", otp);
 
     const html = `
       <p>Your WalletWave OTP:</p>
-      <h2>${otp}</h2>
-      <p>This code expires in ${config.otpExpiryMinutes} minutes.</p>
+      <h1 style="font-size:32px;">${otp}</h1>
+      <p>This code expires in 10 minutes.</p>
     `;
 
-    const mailResult = await sendMail(
+    const mailRes = await sendMail(
       emailLower,
-      "WalletWave Password Reset OTP",
-      html
+      "WalletWave — Password Reset OTP",
+      html,
+      `Your OTP is ${otp}`
     );
 
-    if (!mailResult.ok) {
-      console.error("❌ Email failed:", mailResult.error);
+    if (!mailRes.ok) {
+      console.log("❌ Mail error:", mailRes.error);
     }
 
     return res.json({ ok: true });
@@ -180,23 +179,17 @@ router.post("/verify-otp", async (req, res) => {
       used: false,
     }).sort({ createdAt: -1 });
 
-    if (!record)
-      return res.status(400).json({ error: "Invalid OTP" });
-
+    if (!record) return res.status(400).json({ error: "Invalid OTP" });
     if (record.expiresAt < new Date())
       return res.status(400).json({ error: "OTP expired" });
 
     const ok = await bcrypt.compare(String(otp), record.otpHash);
-    if (!ok)
-      return res.status(400).json({ error: "Invalid OTP" });
+    if (!ok) return res.status(400).json({ error: "Invalid OTP" });
 
     record.used = true;
     await record.save();
 
-    const resetToken = createJwt(
-      { sub: emailLower, type: "reset" },
-      "15m"
-    );
+    const resetToken = createJwt({ sub: emailLower, type: "reset" }, "15m");
 
     return res.json({ ok: true, resetToken });
   } catch (err) {
@@ -215,23 +208,19 @@ router.post("/reset-password", async (req, res) => {
     if (!newPassword || newPassword.length < 8)
       return res.status(400).json({ error: "Password must be 8+ chars" });
 
-    let targetEmail = email?.toLowerCase();
+    let finalEmail = email?.toLowerCase();
 
     if (resetToken) {
-      try {
-        const payload = jwt.verify(resetToken, config.jwt.secret);
-        if (payload.type !== "reset")
-          return res.status(400).json({ error: "Invalid reset token" });
+      const payload = jwt.verify(resetToken, config.jwt.secret);
+      if (payload.type !== "reset")
+        return res.status(400).json({ error: "Invalid token" });
 
-        targetEmail = payload.sub;
-      } catch (e) {
-        return res.status(400).json({ error: "Expired or invalid reset token" });
-      }
+      finalEmail = payload.sub;
     }
 
-    const user = await User.findOne({ email: targetEmail });
-    if (!user)
-      return res.status(404).json({ error: "User not found" });
+    const user = await User.findOne({ email: finalEmail });
+
+    if (!user) return res.status(404).json({ error: "User not found" });
 
     user.passwordHash = await bcrypt.hash(newPassword, SALT);
     await user.save();
