@@ -1,17 +1,18 @@
-// server.js
 const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
-const config = require("./config"); 
+const config = require("./config");
+
 const authRoutes = require("./routes/auth");
 const profileRoutes = require("./routes/profile");
+const expenseRoutes = require("./routes/expense"); // ✔ SINGULAR FILE
 
 async function start() {
   try {
     await mongoose.connect(config.mongoUri);
-    console.log("Connected to MongoDB");
+    console.log("Connected to MongoDB ✔");
   } catch (err) {
-    console.error("MongoDB connection failed:", err);
+    console.error("MongoDB connection failed ❌:", err);
     process.exit(1);
   }
 
@@ -21,9 +22,10 @@ async function start() {
 
   app.use("/api/auth", authRoutes);
   app.use("/api/profile", profileRoutes);
+  app.use("/api/expense", expenseRoutes); // ✔ MATCHES FRONTEND
 
   app.get("/", (req, res) => {
-    res.send("WalletWave backend active ✔ (MongoDB)");
+    res.send("WalletWave backend active ✔");
   });
 
   app.listen(config.port, () => {
@@ -31,6 +33,4 @@ async function start() {
   });
 }
 
-start().catch((err) => {
-  console.error("Failed to start:", err);
-});
+start();
