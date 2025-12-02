@@ -1,74 +1,48 @@
-// models/User.js
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 
+/* -------------------------------------------
+   MONTHLY SUMMARY SUB-SCHEMA
+-------------------------------------------- */
+const monthSummarySchema = new mongoose.Schema({
+  month: { type: String, required: true },   // "2025-12"
+  totalExpense: { type: Number, default: 0 },
+  categories: { type: Object, default: {} }, // { Food: 500, Travel: 200 }
+});
+
+/* -------------------------------------------
+   USER SCHEMA
+-------------------------------------------- */
 const userSchema = new mongoose.Schema(
   {
-    name: {
-      type: String,
-      trim: true,
-    },
+    name: String,
 
-    email: {
-      type: String,
-      required: true,
-      unique: true,
-      lowercase: true,
-      trim: true,
-    },
+    email: { type: String, required: true, unique: true },
 
-    passwordHash: {
-      type: String,
-      required: true,
-    },
+    passwordHash: { type: String, required: true },
 
-    avatarUrl: {
-      type: String,
-      default: null,
-    },
+    avatarUrl: String,
 
-    // ✅ THIS FIELD WAS THE PROBLEM
-    monthlyIncome: {
-      type: Number,
-      default: 0, // important for dashboard balance
-    },
+    monthlyIncome: { type: Number, default: 0 },
 
-    phone: {
-      type: String,
-      default: null,
-    },
+    phone: String,
 
-    // Sensitive fields (always hashed)
-    upiHash: {
-      type: String,
-      default: null,
-    },
+    // ****** UPI + BANK NUMBER HASH STORAGE ******
+    upiHash: { type: String },          // hashed UPI ID
+    bankNumberHash: { type: String },   // hashed bank number
 
-    bankNumberHash: {
-      type: String,
-      default: null,
-    },
+    // ****** MONTHLY SUMMARIES ARRAY ******
+    monthlySummaries: [monthSummarySchema],
   },
-  {
-    timestamps: true,
-  }
+  { timestamps: true }   // adds createdAt & updatedAt automatically
 );
 
-/**
- * Hash sensitive data (UPI & bank number) before saving
- */
+/* --------------------------------------------------------
+   METHOD TO SET SENSITIVE DATA (you already used this)
+-------------------------------------------------------- */
 userSchema.methods.setSensitiveData = async function ({ upi, bankNumber }) {
   if (upi) this.upiHash = await bcrypt.hash(upi, 10);
   if (bankNumber) this.bankNumberHash = await bcrypt.hash(bankNumber, 10);
-};
-
-// Prevent returning sensitive data
-userSchema.methods.toJSON = function () {
-  const obj = this.toObject();
-  delete obj.passwordHash;
-  delete obj.upiHash;
-  delete obj.bankNumberHash;
-  return obj;
 };
 
 module.exports = mongoose.model("User", userSchema);

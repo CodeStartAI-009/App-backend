@@ -21,33 +21,43 @@ const createJwt = (payload, exp = config.jwt.expiresIn) => {
 /* ============================================================
    SIGNUP
 ============================================================ */
+// POST /api/auth/signup
 router.post("/signup", async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
-    if (!email || !validator.isEmail(email))
-      return res.status(400).json({ error: "Valid email required" });
+    let existing = await User.findOne({ email });
+    if (existing) {
+      return res.status(400).json({ error: "Email already exists" });
+    }
 
-    if (!password || password.length < 8)
-      return res.status(400).json({ error: "Password must be 8+ characters" });
-
-    const emailLower = email.toLowerCase();
-
-    const exists = await User.findOne({ email: emailLower });
-    if (exists)
-      return res.status(409).json({ error: "Email already in use" });
-
-    const passwordHash = await bcrypt.hash(password, SALT);
+    const passwordHash = await bcrypt.hash(password, 10);
 
     const user = await User.create({
-      name: name || null,
-      email: emailLower,
+      name,
+      email,
       passwordHash,
     });
 
-    return res.status(201).json({ ok: true, userId: user._id });
+    const token = jwt.sign(
+      { sub: user._id.toString() },
+      config.jwt.secret,
+      { expiresIn: "7d" }
+    );
+
+    return res.json({
+      ok: true,
+      token,
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        monthlyIncome: user.monthlyIncome,
+      },
+    });
+
   } catch (err) {
-    console.error("Signup error:", err);
+    console.error("SIGNUP ERROR:", err);
     return res.status(500).json({ error: "Server error" });
   }
 });
