@@ -1,3 +1,4 @@
+// routes/auth.js
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -11,97 +12,98 @@ const { sendMail } = require("../utils/mailer");
 const router = express.Router();
 const SALT = 10;
 
-/* ============================================================
-   JWT Helper
-============================================================ */
-const createJwt = (payload, exp = config.jwt.expiresIn) => {
-  return jwt.sign(payload, config.jwt.secret, { expiresIn: exp });
-};
+/**
+ * createJwt(payload, expiresIn)
+ */
+function createJwt(payload, expiresIn = config.jwt.expiresIn) {
+  return jwt.sign(payload, config.jwt.secret, { expiresIn });
+}
+function generateUsername(name) {
+  const base = name.toLowerCase().replace(/\s+/g, "");
+  const year = new Date().getFullYear().toString().slice(-2);
+  const random = Math.floor(100 + Math.random() * 900); // 3-digit
+  return `${base}${year}${random}`;
+}
 
-/* ============================================================
+/* ---------------------------
    SIGNUP
-============================================================ */
-// POST /api/auth/signup
+---------------------------- */
 router.post("/signup", async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
-    let existing = await User.findOne({ email });
-    if (existing) {
-      return res.status(400).json({ error: "Email already exists" });
-    }
+    if (!email || !validator.isEmail(email))
+      return res.status(400).json({ error: "Valid email required" });
+
+    const emailLower = email.toLowerCase();
+    if (await User.findOne({ email: emailLower }))
+      return res.status(409).json({ error: "Email already in use" });
 
     const passwordHash = await bcrypt.hash(password, 10);
 
+    const userName = generateUsername(name || "user");
+
     const user = await User.create({
       name,
-      email,
+      userName,
+      email: emailLower,
       passwordHash,
     });
 
-    const token = jwt.sign(
-      { sub: user._id.toString() },
-      config.jwt.secret,
-      { expiresIn: "7d" }
-    );
+    const token = createJwt({ sub: user._id });
 
     return res.json({
       ok: true,
       token,
       user: {
-        _id: user._id,
+        id: user._id,
         name: user.name,
+        userName: user.userName,
         email: user.email,
+        avatarUrl: user.avatarUrl,
         monthlyIncome: user.monthlyIncome,
+        bankBalance: user.bankBalance,
       },
     });
-
   } catch (err) {
-    console.error("SIGNUP ERROR:", err);
+    console.log("SIGNUP ERROR:", err);
     return res.status(500).json({ error: "Server error" });
   }
 });
 
-/* ============================================================
+
+/* ---------------------------
    LOGIN
-============================================================ */
+---------------------------- */
 router.post("/login", async (req, res) => {
   try {
     const { emailOrPhone, password } = req.body;
-
-    console.log("\n====== LOGIN ATTEMPT ======");
-    console.log("Incoming:", req.body);
+    console.log("LOGIN attempt:", req.body);
 
     if (!emailOrPhone || !password)
       return res.status(400).json({ error: "Missing fields" });
 
-    const identifier = emailOrPhone.trim();
+    const identifier = String(emailOrPhone).trim();
     let user = null;
 
     if (validator.isEmail(identifier)) {
-      console.log("Attempting email login:", identifier.toLowerCase());
       user = await User.findOne({ email: identifier.toLowerCase() });
     } else {
-      console.log("Attempting phone login:", identifier);
       user = await User.findOne({ phone: identifier });
     }
 
     if (!user) {
-      console.log("❌ NO USER FOUND");
+      console.log("NO USER FOUND for:", identifier);
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
-    console.log("User found:", user.email);
-
     const match = await bcrypt.compare(password, user.passwordHash);
-    console.log("Password match:", match);
-
-    if (!match)
+    if (!match) {
+      console.log("Password mismatch for:", user.email);
       return res.status(401).json({ error: "Invalid credentials" });
+    }
 
     const token = createJwt({ sub: user._id.toString() });
-
-    console.log("SUCCESS: Token issued");
 
     return res.json({
       ok: true,
@@ -111,6 +113,7 @@ router.post("/login", async (req, res) => {
         email: user.email,
         name: user.name,
         avatarUrl: user.avatarUrl || null,
+        monthlyIncome: user.monthlyIncome || 0,
       },
     });
   } catch (err) {
@@ -118,50 +121,48 @@ router.post("/login", async (req, res) => {
     return res.status(500).json({ error: "Server error" });
   }
 });
+
+/* ---------------------------
+   FORGOT PASSWORD -> SEND OTP
+---------------------------- */
 router.post("/forgot-password", async (req, res) => {
   try {
     const { email } = req.body;
-    console.log("📩 Forgot-password request:", email);
+    console.log("Forgot-password request:", email);
 
-    if (!email || !validator.isEmail(email))
+    if (!email || !validator.isEmail(String(email)))
       return res.status(400).json({ error: "Valid email required" });
 
-    const emailLower = email.toLowerCase();
+    const emailLower = String(email).toLowerCase();
     const user = await User.findOne({ email: emailLower });
 
+    // Privacy: always return ok (do not leak whether email exists)
     if (!user) {
-      console.log("ℹ No user found — silent OK");
+      console.log("Email not registered - returning OK (privacy).");
       return res.json({ ok: true });
     }
 
-    const otp = generateNumericOtp(6);
-    const otpHash = await bcrypt.hash(otp, SALT);
+    const plainOtp = generateNumericOtp(6);
+    const otpHash = await bcrypt.hash(String(plainOtp), SALT);
+    const expiresAt = new Date(Date.now() + (config.otpExpiryMinutes || 10) * 60 * 1000);
 
     await Otp.create({
       email: emailLower,
       otpHash,
       used: false,
       purpose: "reset",
-      expiresAt: new Date(Date.now() + 10 * 60000), // 10 min
+      expiresAt,
     });
 
-    console.log("✔ OTP generated:", otp);
+    const html = `<p>Your WalletWave password reset code is:</p><h2>${plainOtp}</h2><p>This code expires in ${config.otpExpiryMinutes || 10} minutes.</p>`;
 
-    const html = `
-      <p>Your WalletWave OTP:</p>
-      <h1 style="font-size:32px;">${otp}</h1>
-      <p>This code expires in 10 minutes.</p>
-    `;
-
-    const mailRes = await sendMail(
-      emailLower,
-      "WalletWave — Password Reset OTP",
-      html,
-      `Your OTP is ${otp}`
-    );
+    const mailRes = await sendMail(emailLower, "WalletWave Password Reset OTP", html, `Your OTP: ${plainOtp}`);
 
     if (!mailRes.ok) {
-      console.log("❌ Mail error:", mailRes.error);
+      console.error("Mail send failed:", mailRes.error);
+      // still return ok to not leak
+    } else {
+      console.log("OTP mailed to:", emailLower);
     }
 
     return res.json({ ok: true });
@@ -171,17 +172,15 @@ router.post("/forgot-password", async (req, res) => {
   }
 });
 
-/* ============================================================
+/* ---------------------------
    VERIFY OTP
-============================================================ */
+---------------------------- */
 router.post("/verify-otp", async (req, res) => {
   try {
     const { email, otp } = req.body;
+    if (!email || !otp) return res.status(400).json({ error: "Missing fields" });
 
-    if (!email || !otp)
-      return res.status(400).json({ error: "Missing fields" });
-
-    const emailLower = email.toLowerCase();
+    const emailLower = String(email).toLowerCase();
 
     const record = await Otp.findOne({
       email: emailLower,
@@ -189,8 +188,8 @@ router.post("/verify-otp", async (req, res) => {
       used: false,
     }).sort({ createdAt: -1 });
 
-    if (!record) return res.status(400).json({ error: "Invalid OTP" });
-    if (record.expiresAt < new Date())
+    if (!record) return res.status(400).json({ error: "Invalid or expired OTP" });
+    if (record.expiresAt && record.expiresAt < new Date())
       return res.status(400).json({ error: "OTP expired" });
 
     const ok = await bcrypt.compare(String(otp), record.otpHash);
@@ -208,9 +207,9 @@ router.post("/verify-otp", async (req, res) => {
   }
 });
 
-/* ============================================================
+/* ---------------------------
    RESET PASSWORD
-============================================================ */
+---------------------------- */
 router.post("/reset-password", async (req, res) => {
   try {
     const { resetToken, email, newPassword } = req.body;
@@ -218,18 +217,21 @@ router.post("/reset-password", async (req, res) => {
     if (!newPassword || newPassword.length < 8)
       return res.status(400).json({ error: "Password must be 8+ chars" });
 
-    let finalEmail = email?.toLowerCase();
+    let targetEmail = email ? String(email).toLowerCase() : null;
 
     if (resetToken) {
-      const payload = jwt.verify(resetToken, config.jwt.secret);
-      if (payload.type !== "reset")
-        return res.status(400).json({ error: "Invalid token" });
-
-      finalEmail = payload.sub;
+      try {
+        const payload = jwt.verify(resetToken, config.jwt.secret);
+        if (payload.type !== "reset") throw new Error("Invalid token type");
+        targetEmail = payload.sub;
+      } catch (e) {
+        return res.status(400).json({ error: "Invalid or expired reset token" });
+      }
     }
 
-    const user = await User.findOne({ email: finalEmail });
+    if (!targetEmail) return res.status(400).json({ error: "Missing email or token" });
 
+    const user = await User.findOne({ email: targetEmail });
     if (!user) return res.status(404).json({ error: "User not found" });
 
     user.passwordHash = await bcrypt.hash(newPassword, SALT);

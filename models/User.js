@@ -1,49 +1,42 @@
+// models/User.js
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 
-/* -------------------------------------------
-   MONTHLY SUMMARY SUB-SCHEMA
--------------------------------------------- */
 const monthSummarySchema = new mongoose.Schema({
-  month: { type: String, required: true },   // "2025-12"
+  month: { type: String, required: true },
   totalExpense: { type: Number, default: 0 },
-  totalIncome: {type: Number, default: 0},
-  categories: { type: Object, default: {} }, // { Food: 500, Travel: 200 }
+  totalIncome: { type: Number, default: 0 },
 });
 
-/* -------------------------------------------
-   USER SCHEMA
--------------------------------------------- */
 const userSchema = new mongoose.Schema(
   {
     name: String,
+    userName: String,
 
     email: { type: String, required: true, unique: true },
 
     passwordHash: { type: String, required: true },
 
     avatarUrl: String,
-    bankBalance:{type:Number, default: 0},
+
+    bankBalance: { type: Number, default: 0 },
+
     monthlyIncome: { type: Number, default: 0 },
 
     phone: String,
 
-    // ****** UPI + BANK NUMBER HASH STORAGE ******
-    upiHash: { type: String },          // hashed UPI ID
-    bankNumberHash: { type: String },   // hashed bank number
+    upiHash: String,
+    bankNumberHash: String,
 
-    // ****** MONTHLY SUMMARIES ARRAY ******
     monthlySummaries: [monthSummarySchema],
   },
-  { timestamps: true }   // adds createdAt & updatedAt automatically
+  { timestamps: true }
 );
 
-/* --------------------------------------------------------
-   METHOD TO SET SENSITIVE DATA (you already used this)
--------------------------------------------------------- */
+// store sensitive UPI / bank
 userSchema.methods.setSensitiveData = async function ({ upi, bankNumber }) {
-  if (upi) this.upiHash = await bcrypt.hash(upi, 10);
-  if (bankNumber) this.bankNumberHash = await bcrypt.hash(bankNumber, 10);
+  if (upi) this.upiHash = await bcrypt.hash(String(upi), 10);
+  if (bankNumber) this.bankNumberHash = await bcrypt.hash(String(bankNumber), 10);
 };
 
 module.exports = mongoose.model("User", userSchema);
