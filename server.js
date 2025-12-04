@@ -6,6 +6,8 @@ const config = require("./config");
 const authRoutes = require("./routes/auth");
 const profileRoutes = require("./routes/profile");
 const expenseRoutes = require("./routes/expense"); // ✔ SINGULAR FILE
+const activityRoutes = require("./routes/activity");
+
 
 async function start() {
   try {
@@ -23,7 +25,9 @@ async function start() {
   app.use("/api/auth", authRoutes);
   app.use("/api/profile", profileRoutes);
   app.use("/api/expense", expenseRoutes); // ✔ MATCHES FRONTEND
-
+  app.use("/api/summary", require("./routes/summary"));
+  app.use("/api/income", require("./routes/income"));
+  app.use("/api/activity", activityRoutes);
   app.get("/", (req, res) => {
     res.send("WalletWave backend active ✔");
   });
