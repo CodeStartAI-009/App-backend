@@ -7,6 +7,7 @@ const bcrypt = require("bcryptjs");
 const monthSummarySchema = new mongoose.Schema({
   month: { type: String, required: true },   // "2025-12"
   totalExpense: { type: Number, default: 0 },
+  totalIncome: {type: Number, default: 0},
   categories: { type: Object, default: {} }, // { Food: 500, Travel: 200 }
 });
 
@@ -22,7 +23,7 @@ const userSchema = new mongoose.Schema(
     passwordHash: { type: String, required: true },
 
     avatarUrl: String,
-
+    bankBalance:{type:Number, default: 0},
     monthlyIncome: { type: Number, default: 0 },
 
     phone: String,
