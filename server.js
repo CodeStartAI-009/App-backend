@@ -11,6 +11,7 @@ const incomeRoutes = require("./routes/income");
 const transactionsRoutes = require("./routes/activity");
 const summaryRoutes = require("./routes/summary");
 const userRoutes = require("./routes/user");
+const goalRoutes = require("./routes/goals");
 async function start() {
   try {
     await mongoose.connect(config.mongoUri);
@@ -30,7 +31,7 @@ app.use("/api/income", incomeRoutes);
 app.use("/api/transactions", transactionsRoutes);
 app.use("/api/summary", summaryRoutes);
 app.use("/api/user", userRoutes);
-
+app.use("/api/goals", goalRoutes);
 app.get("/", (req, res) => res.send("WalletWave backend"));
 app.listen(config.port, () => {
   console.log(`Server running → http://localhost:${config.port}`);
