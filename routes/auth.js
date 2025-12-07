@@ -48,6 +48,7 @@ router.post("/signup", async (req, res) => {
       userName,
       email: emailLower,
       passwordHash,
+      coins: 50,
     });
 
     const token = createJwt({ sub: user._id });

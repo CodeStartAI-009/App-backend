@@ -26,20 +26,49 @@ router.get("/recent", auth, async (req, res) => {
 });
 
 /* GET /api/transactions/balance -> activity (all transactions) */
+/* GET /api/transactions/balance -> activity (all transactions) */
+// GET /api/transactions/balance → returns full activity (income + expense)
 router.get("/balance", auth, async (req, res) => {
   try {
     const userId = req.user._id;
-    const expenses = await Expense.find({ userId }).sort({ createdAt: -1 }).lean();
-    const incomes = await Income.find({ userId }).sort({ createdAt: -1 }).lean();
 
-    const exp = expenses.map((e) => ({ ...e, type: "expense" }));
-    const inc = incomes.map((i) => ({ ...i, type: "income" }));
-    const all = [...exp, ...inc].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    // Fetch EXPENSES
+    const expenses = await Expense.find(
+      { userId },
+      "title amount category createdAt"
+    )
+      .sort({ createdAt: -1 })
+      .lean();
 
-    res.json({ ok: true, activity: all });
+    // Fetch INCOMES
+    const incomes = await Income.find(
+      { userId },
+      "title amount category createdAt"
+    )
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Add type: "expense" or "income"
+    const exp = expenses.map((e) => ({
+      ...e,
+      type: "expense",
+    }));
+
+    const inc = incomes.map((i) => ({
+      ...i,
+      type: "income",
+    }));
+
+    // Combine + sort newest first
+    const activity = [...exp, ...inc].sort(
+      (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+    );
+
+    return res.json({ ok: true, activity });
+
   } catch (err) {
     console.error("BALANCE ERROR:", err);
-    res.status(500).json({ error: "Server error" });
+    return res.status(500).json({ error: "Server error" });
   }
 });
 
