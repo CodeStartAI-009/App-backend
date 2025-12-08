@@ -1,66 +1,49 @@
 const express = require("express");
 const cors = require("cors");
-const config = require("../config");
-const connectDB = require("../config/db");
+const config = require("./config");        // ✅ correct
+const connectDB = require("./config/db");  // ✅ correct
 
-// Import routes correctly
-const authRoutes = require("../routes/auth");
-const profileRoutes = require("../routes/profile");
-const expenseRoutes = require("../routes/expense");
-const incomeRoutes = require("../routes/income");
-const transactionsRoutes = require("../routes/activity");
-const summaryRoutes = require("../routes/summary");
-const userRoutes = require("../routes/user");
-const goalRoutes = require("../routes/goals");
-const splitRoutes = require("../routes/split");
-const aiRoutes = require("../routes/aiChat");
+// ROUTES (fix paths)
+const authRoutes = require("./routes/auth");
+const profileRoutes = require("./routes/profile");
+const expenseRoutes = require("./routes/expense");
+const incomeRoutes = require("./routes/income");
+const transactionsRoutes = require("./routes/activity");
+const summaryRoutes = require("./routes/summary");
+const userRoutes = require("./routes/user");
+const goalRoutes = require("./routes/goals");
+const splitRoutes = require("./routes/split");
+const aiRoutes = require("./routes/aiChat");
 
-// Prevent re-creating Express app for each request
-let app;
-let dbConnected = false;
+const app = express();
 
-module.exports = async function handler(req, res) {
-  try {
-    // Connect DB once per cold start
-    if (!dbConnected) {
-      await connectDB();
-      dbConnected = true;
-    }
+// Connect DB
+connectDB();
 
-    // Create app only once
-    if (!app) {
-      app = express();
+app.use(
+  cors({
+    origin: "*",
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
 
-      app.use(
-        cors({
-          origin: "*",
-          methods: ["GET", "POST", "PUT", "DELETE"],
-          allowedHeaders: ["Content-Type", "Authorization"],
-        })
-      );
+app.use(express.json());
 
-      app.use(express.json());
+// ROUTES
+app.use("/api/auth", authRoutes);
+app.use("/api/profile", profileRoutes);
+app.use("/api/expense", expenseRoutes);
+app.use("/api/income", incomeRoutes);
+app.use("/api/transactions", transactionsRoutes);
+app.use("/api/summary", summaryRoutes);
+app.use("/api/user", userRoutes);
+app.use("/api/goals", goalRoutes);
+app.use("/api/split", splitRoutes);
+app.use("/api/ai", aiRoutes);
 
-      // ROUTES
-      app.use("/api/ai", aiRoutes);
-      app.use("/api/auth", authRoutes);
-      app.use("/api/profile", profileRoutes);
-      app.use("/api/expense", expenseRoutes);
-      app.use("/api/income", incomeRoutes);
-      app.use("/api/transactions", transactionsRoutes);
-      app.use("/api/summary", summaryRoutes);
-      app.use("/api/user", userRoutes);
-      app.use("/api/goals", goalRoutes);
-      app.use("/api/split", splitRoutes);
+// Root
+app.get("/", (req, res) => res.send("Backend running ✔"));
 
-      // Default route
-      app.get("/", (req, res) => res.send("WalletWave Backend running ✔"));
-    }
-
-    return app(req, res);
-
-  } catch (err) {
-    console.error("❌ Serverless handler error:", err);
-    res.status(500).json({ error: "Server error" });
-  }
-};
+const PORT = config.port || 4000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
