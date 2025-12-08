@@ -1,15 +1,14 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "description": "WalletWave Backend",
+  "main": "api/index.js",
   "type": "commonjs",
+  "scripts": {
+    "dev": "nodemon server.js",
+    "start": "node api/index.js",
+    "test": "echo \"No tests\" && exit 0"
+  },
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
