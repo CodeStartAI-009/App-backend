@@ -2,6 +2,7 @@ const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const validator = require("validator");
+
 const config = require("../config");
 const User = require("../models/User");
 const Otp = require("../models/Otp");
@@ -17,6 +18,17 @@ const SALT_ROUNDS = 10;
 function createJwt(payload, expiresIn = config.jwt.expiresIn) {
   return jwt.sign(payload, config.jwt.secret, { expiresIn });
 }
+
+/* ---------------------------------------------
+   🔥 TEST / PING ROUTE  (IMPORTANT)
+---------------------------------------------- */
+router.get("/test", (req, res) => {
+  return res.json({ ok: true, message: "Auth API working" });
+});
+
+router.get("/ping", (req, res) => {
+  return res.json({ ok: true, time: Date.now() });
+});
 
 /* ---------------------------------------------
    SIGNUP
@@ -45,9 +57,18 @@ router.post("/signup", async (req, res) => {
       passwordHash,
     });
 
+    // IMPORTANT: return token + user for mobile login
+    const token = createJwt({ sub: user._id.toString() });
+
     return res.status(201).json({
       ok: true,
-      userId: user._id,
+      token,
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        avatarUrl: user.avatarUrl || null,
+      },
     });
   } catch (err) {
     console.error("Signup error:", err);
@@ -112,7 +133,7 @@ router.post("/forgot-password", async (req, res) => {
     const emailLower = email.toLowerCase();
     const user = await User.findOne({ email: emailLower });
 
-    // Privacy: return OK even if user doesn’t exist
+    // Privacy: always return ok
     if (!user) return res.json({ ok: true });
 
     const plainOtp = generateNumericOtp(6);
@@ -201,8 +222,7 @@ router.post("/reset-password", async (req, res) => {
     if (resetToken) {
       try {
         const payload = jwt.verify(resetToken, config.jwt.secret);
-        if (payload.type !== "reset")
-          throw new Error("Invalid token");
+        if (payload.type !== "reset") throw new Error("Invalid token");
         targetEmail = payload.sub;
       } catch (err) {
         return res.status(400).json({ error: "Invalid or expired reset token" });
