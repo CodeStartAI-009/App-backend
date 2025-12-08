@@ -1,8 +1,9 @@
 const express = require("express");
 const cors = require("cors");
-const mongoose = require("mongoose");
 const config = require("../config");
+const connectDB = require("../config/db");
 
+// Import routes correctly
 const authRoutes = require("../routes/auth");
 const profileRoutes = require("../routes/profile");
 const expenseRoutes = require("../routes/expense");
@@ -14,42 +15,52 @@ const goalRoutes = require("../routes/goals");
 const splitRoutes = require("../routes/split");
 const aiRoutes = require("../routes/aiChat");
 
-let isConnected = false;
-
-async function connectDB() {
-  if (isConnected) return;
-
-  await mongoose.connect(config.mongoUri);
-  isConnected = true;
-  console.log("MongoDB connected ✔");
-}
+// Prevent re-creating Express app for each request
+let app;
+let dbConnected = false;
 
 module.exports = async function handler(req, res) {
-  await connectDB();
+  try {
+    // Connect DB once per cold start
+    if (!dbConnected) {
+      await connectDB();
+      dbConnected = true;
+    }
 
-  const app = express();
+    // Create app only once
+    if (!app) {
+      app = express();
 
-  app.use(
-    cors({
-      origin: "*",
-      methods: ["GET", "POST", "PUT", "DELETE"],
-      allowedHeaders: ["Content-Type", "Authorization"],
-    })
-  );
+      app.use(
+        cors({
+          origin: "*",
+          methods: ["GET", "POST", "PUT", "DELETE"],
+          allowedHeaders: ["Content-Type", "Authorization"],
+        })
+      );
 
-  app.use(express.json());
+      app.use(express.json());
 
-  // API ROUTES
-  app.use("/api/ai", aiRoutes);
-  app.use("/api/auth", authRoutes);
-  app.use("/api/profile", profileRoutes);
-  app.use("/api/expense", expenseRoutes);
-  app.use("/api/income", incomeRoutes);
-  app.use("/api/transactions", transactionsRoutes);
-  app.use("/api/summary", summaryRoutes);
-  app.use("/api/user", userRoutes);
-  app.use("/api/goals", goalRoutes);
-  app.use("/api/split", splitRoutes);
+      // ROUTES
+      app.use("/api/ai", aiRoutes);
+      app.use("/api/auth", authRoutes);
+      app.use("/api/profile", profileRoutes);
+      app.use("/api/expense", expenseRoutes);
+      app.use("/api/income", incomeRoutes);
+      app.use("/api/transactions", transactionsRoutes);
+      app.use("/api/summary", summaryRoutes);
+      app.use("/api/user", userRoutes);
+      app.use("/api/goals", goalRoutes);
+      app.use("/api/split", splitRoutes);
 
-  return app(req, res);
+      // Default route
+      app.get("/", (req, res) => res.send("WalletWave Backend running ✔"));
+    }
+
+    return app(req, res);
+
+  } catch (err) {
+    console.error("❌ Serverless handler error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
 };
