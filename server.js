@@ -3,7 +3,7 @@ const cors = require("cors");
 const config = require("./config");
 const connectDB = require("./config/db");
 
-// ROUTES
+// Routes
 const authRoutes = require("./routes/auth");
 const profileRoutes = require("./routes/profile");
 const expenseRoutes = require("./routes/expense");
@@ -17,23 +17,21 @@ const aiRoutes = require("./routes/aiChat");
 
 const app = express();
 
-// ⭐ CONNECT DATABASE
+// Connect DB
 connectDB();
 
-// ⭐ FIX CORS (Render needs OPTIONS allowed)
+app.use(express.json());
+
+// CORS
 app.use(
   cors({
     origin: "*",
-    methods: "GET,POST,PUT,DELETE,PATCH,OPTIONS",
+    methods: "GET,POST,PUT,DELETE",
     allowedHeaders: "Content-Type,Authorization",
   })
 );
-app.options("*", cors());
 
-// ⭐ Body parser
-app.use(express.json());
-
-// ⭐ API ROUTES
+// API ROUTES
 app.use("/api/auth", authRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/expense", expenseRoutes);
@@ -45,13 +43,15 @@ app.use("/api/goals", goalRoutes);
 app.use("/api/split", splitRoutes);
 app.use("/api/ai", aiRoutes);
 
-// ⭐ HEALTH CHECK ROUTE
-app.get("/", (req, res) => res.send("Backend running ✔"));
-
-// ⭐ IMPORTANT FOR RENDER
-const PORT = config.port || 4000;
-
-// ⭐ MUST LISTEN ON 0.0.0.0 (Render requirement)
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+// Root
+app.get("/", (req, res) => {
+  res.send("Backend running ✔");
 });
+
+// ❗ FIXED wildcard handler — NO '*' string
+app.use((req, res) => {
+  res.status(404).json({ error: "Route not found" });
+});
+
+const PORT = config.port || 4000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
