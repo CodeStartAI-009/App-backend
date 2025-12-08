@@ -6,7 +6,7 @@
   "type": "commonjs",
   "scripts": {
     "dev": "nodemon server.js",
-    "start": "node api/index.js",
+    "start": "node server.js",
     "test": "echo \"No tests\" && exit 0"
   },
   "dependencies": {
