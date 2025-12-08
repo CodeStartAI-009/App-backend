@@ -1,10 +1,8 @@
 const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
-
 const config = require("../config");
 
-// Import routes
 const authRoutes = require("../routes/auth");
 const profileRoutes = require("../routes/profile");
 const expenseRoutes = require("../routes/expense");
@@ -18,7 +16,6 @@ const aiRoutes = require("../routes/aiChat");
 
 let isConnected = false;
 
-// Connect to Mongo only once
 async function connectDB() {
   if (isConnected) return;
 
@@ -27,15 +24,23 @@ async function connectDB() {
   console.log("MongoDB connected ✔");
 }
 
-module.exports = async (req, res) => {
+module.exports = async function handler(req, res) {
   await connectDB();
 
   const app = express();
 
-  app.use(cors({ origin: "*" }));
+  app.use(
+    cors({
+      origin: "*",
+      methods: ["GET", "POST", "PUT", "DELETE"],
+      allowedHeaders: ["Content-Type", "Authorization"],
+    })
+  );
+
   app.use(express.json());
 
-  // Register all routes
+  // API ROUTES
+  app.use("/api/ai", aiRoutes);
   app.use("/api/auth", authRoutes);
   app.use("/api/profile", profileRoutes);
   app.use("/api/expense", expenseRoutes);
@@ -45,7 +50,6 @@ module.exports = async (req, res) => {
   app.use("/api/user", userRoutes);
   app.use("/api/goals", goalRoutes);
   app.use("/api/split", splitRoutes);
-  app.use("/api/ai", aiRoutes);
 
   return app(req, res);
 };
