@@ -1,32 +1,34 @@
-// server.js
 const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
-const config = require("./config");
+const config = require("../config");
 
-const authRoutes = require("./routes/auth");
-const profileRoutes = require("./routes/profile");
-const expenseRoutes = require("./routes/expense");
-const incomeRoutes = require("./routes/income");
-const transactionsRoutes = require("./routes/activity");
-const summaryRoutes = require("./routes/summary");
-const userRoutes = require("./routes/user");
-const goalRoutes = require("./routes/goals");
-const splitRoutes = require("./routes/split");
-const aiRoutes = require("./routes/aiChat");
+const authRoutes = require("../routes/auth");
+const profileRoutes = require("../routes/profile");
+const expenseRoutes = require("../routes/expense");
+const incomeRoutes = require("../routes/income");
+const transactionsRoutes = require("../routes/activity");
+const summaryRoutes = require("../routes/summary");
+const userRoutes = require("../routes/user");
+const goalRoutes = require("../routes/goals");
+const splitRoutes = require("../routes/split");
+const aiRoutes = require("../routes/aiChat");
 
-async function start() {
-  try {
-    await mongoose.connect(config.mongoUri);
-    console.log("Connected to MongoDB ✔");
-  } catch (err) {
-    console.error("MongoDB connection failed ❌:", err);
-    process.exit(1);
-  }
+let isConnected = false;
+
+async function connectDB() {
+  if (isConnected) return;
+
+  await mongoose.connect(config.mongoUri);
+  isConnected = true;
+  console.log("MongoDB connected ✔");
+}
+
+module.exports = async function handler(req, res) {
+  await connectDB();
 
   const app = express();
 
-  // CORS - required for iOS simulator
   app.use(
     cors({
       origin: "*",
@@ -49,10 +51,5 @@ async function start() {
   app.use("/api/goals", goalRoutes);
   app.use("/api/split", splitRoutes);
 
-  // TEST ROOT
-  app.get("/", (req, res) => res.send("WalletWave backend running ✔"));
-
-  // START SERVER
-   
-
-start();
+  return app(req, res);
+};
