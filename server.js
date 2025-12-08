@@ -53,9 +53,6 @@ async function start() {
   app.get("/", (req, res) => res.send("WalletWave backend running ✔"));
 
   // START SERVER
-  app.listen(config.port, () => {
-    console.log(`🚀 Server running → http://localhost:${config.port}`);
-  });
-}
+   
 
 start();
