@@ -9,7 +9,7 @@ const openai = require("../utils/openaiClient");
 
 const COINS_PER_CHAT = 5;
 const COINS_PER_AD = 10;
-const WEEKLY_BONUS = 15;
+const WEEKLY_BONUS = 10;
 
 /* =========================================================
    Helper: Build user's formatted transaction summary
