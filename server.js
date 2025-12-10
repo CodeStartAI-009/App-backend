@@ -2,7 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const config = require("./config");
 const connectDB = require("./config/db");
-
+const { runCronJobs } = require("./utils/cronJobs");
 // Routes
 const authRoutes = require("./routes/auth");
 const profileRoutes = require("./routes/profile");
