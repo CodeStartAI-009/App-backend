@@ -4,6 +4,7 @@ const auth = require("../middleware/auth");
 const Goal = require("../models/Goal");
 const Expense = require("../models/Expense");
 const User = require("../models/User");
+const { pushAndSave } = require("../utils/pushAndSave");
 
 const router = express.Router();
 
@@ -43,6 +44,8 @@ router.get("/:id", auth, async (req, res) => {
    CREATE GOAL
 ============================================================================ */
 router.post("/create", auth, async (req, res) => {
+  const io = req.app.get("io");
+
   try {
     const { title, amount } = req.body;
 
@@ -57,6 +60,14 @@ router.post("/create", auth, async (req, res) => {
       completed: false,
     });
 
+    // Notify user
+    pushAndSave(
+      req.user._id,
+      "Goal Created",
+      `Your new goal "${title}" has been created.`,
+      io
+    );
+
     res.json({ ok: true, goal });
   } catch (err) {
     console.error("GOAL CREATE ERROR:", err);
@@ -65,45 +76,57 @@ router.post("/create", auth, async (req, res) => {
 });
 
 /* ============================================================================
-   ADD SAVINGS TO GOAL  → adds to Expense too
-   POST /api/goals/add-saving/:id   body { amount: number }
+   ADD SAVINGS TO GOAL
 ============================================================================ */
 router.post("/add-saving/:id", auth, async (req, res) => {
+  const io = req.app.get("io");
+
   try {
-    // Defensive read in case req.body is missing
-    const body = req.body || {};
-    const rawAmount = body.amount;
+    const amount = Number(req.body.amount);
+    if (!amount || amount <= 0)
+      return res.status(400).json({ error: "Valid amount required" });
 
-    if (rawAmount == null)
-      return res.status(400).json({ error: "Amount is required in request body" });
+    const goal = await Goal.findOne({
+      _id: req.params.id,
+      userId: req.user._id,
+    });
 
-    const amount = Number(rawAmount);
-    if (Number.isNaN(amount) || amount <= 0)
-      return res.status(400).json({ error: "Amount must be a positive number" });
-
-    const goal = await Goal.findOne({ _id: req.params.id, userId: req.user._id });
     const user = await User.findById(req.user._id);
 
     if (!goal) return res.status(404).json({ error: "Goal not found" });
     if (!user) return res.status(404).json({ error: "User not found" });
 
-    // Add saving to goal
-    goal.saved = Number(goal.saved || 0) + amount;
+    // Update saved amount
+    goal.saved += amount;
 
-    // Also log this as an EXPENSE
+    // Create Expense log
     await Expense.create({
       userId: req.user._id,
       title: `Saving for ${goal.title}`,
-      amount: amount,
+      amount,
       category: "Goal Saving",
     });
 
-    // Deduct from user bank balance (ensure numeric)
+    // Deduct from user bank balance
     user.bankBalance = Number(user.bankBalance || 0) - amount;
 
-    // If saved >= amount then mark completed
+    // Check goal completion
     if (goal.saved >= goal.amount) {
       goal.completed = true;
+
+      pushAndSave(
+        req.user._id,
+        "Goal Completed",
+        `Congratulations! You completed your goal "${goal.title}".`,
+        io
+      );
+    } else {
+      pushAndSave(
+        req.user._id,
+        "Saving Added",
+        `₹${amount} added to your goal "${goal.title}".`,
+        io
+      );
     }
 
     await goal.save();
@@ -117,22 +140,34 @@ router.post("/add-saving/:id", auth, async (req, res) => {
 });
 
 /* ============================================================================
-   UPDATE GOAL (title, amount)
+   UPDATE GOAL
 ============================================================================ */
 router.put("/update/:id", auth, async (req, res) => {
+  const io = req.app.get("io");
+
   try {
     const { title, amount } = req.body;
 
-    const goal = await Goal.findOne({ _id: req.params.id, userId: req.user._id });
+    const goal = await Goal.findOne({
+      _id: req.params.id,
+      userId: req.user._id,
+    });
+
     if (!goal) return res.status(404).json({ error: "Goal not found" });
 
     if (title) goal.title = title;
     if (amount != null) goal.amount = Number(amount);
 
-    // Recheck completion
-    goal.completed = Number(goal.saved || 0) >= Number(goal.amount || 0);
+    goal.completed = goal.saved >= goal.amount;
 
     await goal.save();
+
+    pushAndSave(
+      req.user._id,
+      "Goal Updated",
+      `Your goal "${goal.title}" has been updated.`,
+      io
+    );
 
     res.json({ ok: true, goal });
   } catch (err) {
@@ -145,52 +180,39 @@ router.put("/update/:id", auth, async (req, res) => {
    DELETE GOAL
 ============================================================================ */
 router.delete("/delete/:id", auth, async (req, res) => {
-    try {
-      const goal = await Goal.findOne({
-        _id: req.params.id,
-        userId: req.user._id,
-      });
-  
-      if (!goal)
-        return res.status(404).json({ error: "Goal not found" });
-  
-      const userId = req.user._id;
-  
-      // ---------------------------------------------------
-      // 1️⃣ Delete all expenses related to this goal
-      // ---------------------------------------------------
-      const deletedExpenses = await Expense.deleteMany({
-        userId,
-        title: { $regex: `Saving for ${goal.title}`, $options: "i" }
-      });
-  
-      // ---------------------------------------------------
-      // 2️⃣ Delete the Goal
-      // ---------------------------------------------------
-      await Goal.findByIdAndDelete(goal._id);
-  
-      // ---------------------------------------------------
-      // 3️⃣ Recalculate TOTAL EXPENSE for the user
-      // ---------------------------------------------------
-      const allExpenses = await Expense.find({ userId });
-      const totalExpense = allExpenses.reduce((sum, e) => sum + e.amount, 0);
-  
-      await User.findByIdAndUpdate(userId, {
-        totalExpense,
-      });
-  
-      res.json({
-        ok: true,
-        message: "Goal deleted along with related expenses",
-        removedExpenses: deletedExpenses.deletedCount,
-        updatedTotalExpense: totalExpense
-      });
-  
-    } catch (err) {
-      console.error("GOAL DELETE ERROR:", err);
-      res.status(500).json({ error: "Server error" });
-    }
-  });
-  
+  const io = req.app.get("io");
+
+  try {
+    const goal = await Goal.findOne({
+      _id: req.params.id,
+      userId: req.user._id,
+    });
+
+    if (!goal) return res.status(404).json({ error: "Goal not found" });
+
+    const userId = req.user._id;
+
+    // Remove all related expenses
+    await Expense.deleteMany({
+      userId,
+      title: { $regex: `Saving for ${goal.title}`, $options: "i" },
+    });
+
+    // Delete goal
+    await Goal.findByIdAndDelete(goal._id);
+
+    pushAndSave(
+      userId,
+      "Goal Deleted",
+      `Your goal "${goal.title}" has been deleted.`,
+      io
+    );
+
+    res.json({ ok: true, message: "Goal deleted successfully" });
+  } catch (err) {
+    console.error("GOAL DELETE ERROR:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
 
 module.exports = router;
