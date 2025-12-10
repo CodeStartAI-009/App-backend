@@ -71,7 +71,7 @@ router.post("/signup", async (req, res) => {
         email: user.email,
         name: user.name,
         agreedToTerms: user.agreedToTerms,
-        avatarUrl: user.avatarUrl || null,
+        coins: 40
       },
     });
   } catch (err) {
