@@ -35,7 +35,7 @@ router.get("/ping", (req, res) => {
 ---------------------------------------------- */
 router.post("/signup", async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, agreedToTerms } = req.body;
 
     if (!email || !validator.isEmail(email))
       return res.status(400).json({ error: "Valid email required" });
@@ -43,9 +43,12 @@ router.post("/signup", async (req, res) => {
     if (!password || password.length < 8)
       return res.status(400).json({ error: "Password must be 8+ characters" });
 
-    const emailLower = email.toLowerCase();
-    const existing = await User.findOne({ email: emailLower });
+    if (!agreedToTerms)
+      return res.status(400).json({ error: "You must agree to Terms & Conditions" });
 
+    const emailLower = email.toLowerCase();
+
+    const existing = await User.findOne({ email: emailLower });
     if (existing)
       return res.status(409).json({ error: "Email already in use" });
 
@@ -55,9 +58,9 @@ router.post("/signup", async (req, res) => {
       name: name || null,
       email: emailLower,
       passwordHash,
+      agreedToTerms: true,
     });
 
-    // IMPORTANT: return token + user for mobile login
     const token = createJwt({ sub: user._id.toString() });
 
     return res.status(201).json({
@@ -67,6 +70,7 @@ router.post("/signup", async (req, res) => {
         id: user._id,
         email: user.email,
         name: user.name,
+        agreedToTerms: user.agreedToTerms,
         avatarUrl: user.avatarUrl || null,
       },
     });
@@ -76,9 +80,7 @@ router.post("/signup", async (req, res) => {
   }
 });
 
-/* ---------------------------------------------
-   LOGIN
----------------------------------------------- */
+/* ------------------- LOGIN ------------------- */
 router.post("/login", async (req, res) => {
   try {
     const { emailOrPhone, password } = req.body;
@@ -98,7 +100,6 @@ router.post("/login", async (req, res) => {
       return res.status(401).json({ error: "Invalid credentials" });
 
     const match = await bcrypt.compare(password, user.passwordHash);
-
     if (!match)
       return res.status(401).json({ error: "Invalid credentials" });
 
@@ -112,6 +113,7 @@ router.post("/login", async (req, res) => {
         email: user.email,
         name: user.name,
         avatarUrl: user.avatarUrl || null,
+        agreedToTerms: user.agreedToTerms,
       },
     });
   } catch (err) {
