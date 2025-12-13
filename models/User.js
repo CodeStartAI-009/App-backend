@@ -1,16 +1,6 @@
-const mongoose = require("mongoose");
-const bcrypt = require("bcryptjs");
-
-const monthSummarySchema = new mongoose.Schema({
-  month: { type: String, required: true },
-  totalExpense: { type: Number, default: 0 },
-  totalIncome: { type: Number, default: 0 },
-});
-
 const userSchema = new mongoose.Schema(
   {
     name: { type: String, trim: true },
-    userName: { type: String, trim: true },
 
     email: {
       type: String,
@@ -22,12 +12,15 @@ const userSchema = new mongoose.Schema(
 
     passwordHash: { type: String, required: true },
 
-    /* AGREEMENT */
     agreedToTerms: { type: Boolean, default: false },
 
-    /* APP CREDITS */
-    coins: { type: Number, default: 50 },
-    lastWeeklyReward: { type: Date, default: null },
+    /* 🌍 COUNTRY */
+    country: {
+      type: String,
+      required: true,
+      trim: true,
+      default: "India", // safe default for existing users
+    },
 
     avatarUrl: { type: String, default: null },
 
@@ -39,18 +32,10 @@ const userSchema = new mongoose.Schema(
     upiHash: { type: String, default: null },
     bankNumberHash: { type: String, default: null },
 
+    coins: { type: Number, default: 50 },
+    lastWeeklyReward: { type: Date, default: null },
+
     monthlySummaries: [monthSummarySchema],
   },
   { timestamps: true }
 );
-
-userSchema.methods.setSensitiveData = async function ({ upi, bankNumber }) {
-  if (upi) {
-    this.upiHash = await bcrypt.hash(String(upi), 10);
-  }
-  if (bankNumber) {
-    this.bankNumberHash = await bcrypt.hash(String(bankNumber), 10);
-  }
-};
-
-module.exports = mongoose.model("User", userSchema);

@@ -21,7 +21,16 @@ router.get("/me", auth, async (req, res) => {
 // UPDATE PROFILE
 router.patch("/me", auth, async (req, res) => {
   try {
-    const { name, avatarUrl, monthlyIncome, phone, upi, bankNumber, bankBalance } = req.body;
+    const {
+      name,
+      avatarUrl,
+      monthlyIncome,
+      phone,
+      upi,
+      bankNumber,
+      bankBalance,
+      country,
+    } = req.body;
 
     const user = await User.findById(req.user._id);
     if (!user) return res.status(404).json({ error: "User not found" });
@@ -29,12 +38,11 @@ router.patch("/me", auth, async (req, res) => {
     if (name !== undefined) user.name = name;
     if (avatarUrl !== undefined) user.avatarUrl = avatarUrl;
     if (monthlyIncome !== undefined) user.monthlyIncome = Number(monthlyIncome);
+    if (bankBalance !== undefined) user.bankBalance = Number(bankBalance);
     if (phone !== undefined) user.phone = phone;
 
-    /** ⭐ FIX: save balance */
-    if (bankBalance !== undefined) {
-      user.bankBalance = Number(bankBalance);
-    }
+    /* 🌍 COUNTRY */
+    if (country !== undefined) user.country = country;
 
     if (upi || bankNumber) {
       await user.setSensitiveData({ upi, bankNumber });
@@ -42,14 +50,16 @@ router.patch("/me", auth, async (req, res) => {
 
     await user.save();
 
-    const safeUser =
-      await User.findById(user._id).select("-passwordHash -upiHash -bankNumberHash");
+    const safeUser = await User.findById(user._id).select(
+      "-passwordHash -upiHash -bankNumberHash"
+    );
 
     res.json({ ok: true, user: safeUser });
   } catch (err) {
-    console.log("PROFILE UPDATE ERROR:", err);
+    console.error("PROFILE UPDATE ERROR:", err);
     res.status(500).json({ error: "Profile update failed" });
   }
 });
+
 
 module.exports = router;
