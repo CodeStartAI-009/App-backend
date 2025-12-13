@@ -1,3 +1,4 @@
+// models/User.js
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 
@@ -27,8 +28,8 @@ const userSchema = new mongoose.Schema(
     country: {
       type: String,
       required: true,
-      trim: true,
       default: "India",
+      trim: true,
     },
 
     countryCode: {
@@ -46,6 +47,13 @@ const userSchema = new mongoose.Schema(
       trim: true,
     },
 
+    /* 💱 CURRENCY */
+    currency: {
+      type: String, // INR, USD, EUR
+      required: true,
+      default: "INR",
+    },
+
     avatarUrl: { type: String, default: null },
 
     bankBalance: { type: Number, default: 0 },
@@ -55,8 +63,8 @@ const userSchema = new mongoose.Schema(
     phone: {
       type: String,
       trim: true,
-      unique: true, // ⭐ strongly recommended
-      sparse: true, // allows existing users without phone
+      unique: true,
+      sparse: true,
     },
 
     upiHash: { type: String, default: null },
@@ -71,12 +79,9 @@ const userSchema = new mongoose.Schema(
 );
 
 userSchema.methods.setSensitiveData = async function ({ upi, bankNumber }) {
-  if (upi) {
-    this.upiHash = await bcrypt.hash(String(upi), 10);
-  }
-  if (bankNumber) {
+  if (upi) this.upiHash = await bcrypt.hash(String(upi), 10);
+  if (bankNumber)
     this.bankNumberHash = await bcrypt.hash(String(bankNumber), 10);
-  }
 };
 
 module.exports = mongoose.model("User", userSchema);

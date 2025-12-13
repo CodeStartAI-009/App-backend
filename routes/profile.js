@@ -2,15 +2,19 @@
 const express = require("express");
 const auth = require("../middleware/auth");
 const User = require("../models/User");
+const { getCurrencyByCountryCode } = require("../utils/countryCurrency");
 
 const router = express.Router();
 
-// GET PROFILE
+/* GET PROFILE */
 router.get("/me", auth, async (req, res) => {
   try {
-    // select safe fields only
-    const user = await User.findById(req.user._id).select("-passwordHash -upiHash -bankNumberHash");
+    const user = await User.findById(req.user._id).select(
+      "-passwordHash -upiHash -bankNumberHash"
+    );
+
     if (!user) return res.status(404).json({ error: "User not found" });
+
     res.json({ ok: true, user });
   } catch (err) {
     console.error("Profile GET error:", err);
@@ -18,7 +22,7 @@ router.get("/me", auth, async (req, res) => {
   }
 });
 
-// UPDATE PROFILE
+/* UPDATE PROFILE */
 router.patch("/me", auth, async (req, res) => {
   try {
     const {
@@ -37,7 +41,7 @@ router.patch("/me", auth, async (req, res) => {
     const user = await User.findById(req.user._id);
     if (!user) return res.status(404).json({ error: "User not found" });
 
-    /* BASIC FIELDS */
+    /* BASIC */
     if (name !== undefined) user.name = name;
     if (avatarUrl !== undefined) user.avatarUrl = avatarUrl;
     if (monthlyIncome !== undefined)
@@ -45,13 +49,24 @@ router.patch("/me", auth, async (req, res) => {
     if (bankBalance !== undefined)
       user.bankBalance = Number(bankBalance);
 
-    /* 🌍 COUNTRY */
+    /* 🌍 COUNTRY + CURRENCY */
     if (country !== undefined) user.country = country;
-    if (countryCode !== undefined)
-      user.countryCode = countryCode.toUpperCase();
+
+    if (countryCode !== undefined) {
+      const cc = countryCode.toUpperCase();
+      const currencyInfo = getCurrencyByCountryCode(cc);
+
+      if (!currencyInfo) {
+        return res.status(400).json({ error: "Unsupported country" });
+      }
+
+      user.countryCode = cc;
+      user.currency = currencyInfo.currency;
+    }
+
     if (callingCode !== undefined) user.callingCode = callingCode;
 
-    /* 📞 PHONE VALIDATION (E.164) */
+    /* 📞 PHONE (E.164) */
     if (phone !== undefined) {
       const e164Regex = /^\+[1-9]\d{6,14}$/;
       if (!e164Regex.test(phone)) {
@@ -59,11 +74,10 @@ router.patch("/me", auth, async (req, res) => {
           error: "Invalid phone number format",
         });
       }
-
       user.phone = phone;
     }
 
-    /* 🔐 SENSITIVE DATA */
+    /* 🔐 SENSITIVE */
     if (upi || bankNumber) {
       await user.setSensitiveData({ upi, bankNumber });
     }
@@ -80,7 +94,5 @@ router.patch("/me", auth, async (req, res) => {
     res.status(500).json({ error: "Profile update failed" });
   }
 });
-
-
 
 module.exports = router;
