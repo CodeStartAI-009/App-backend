@@ -6,6 +6,7 @@ const monthSummarySchema = new mongoose.Schema({
   totalExpense: { type: Number, default: 0 },
   totalIncome: { type: Number, default: 0 },
 });
+
 const userSchema = new mongoose.Schema(
   {
     name: { type: String, trim: true },
@@ -22,12 +23,27 @@ const userSchema = new mongoose.Schema(
 
     agreedToTerms: { type: Boolean, default: false },
 
-    /* 🌍 COUNTRY */
+    /* 🌍 COUNTRY INFO */
     country: {
       type: String,
       required: true,
       trim: true,
-      default: "India", // safe default for existing users
+      default: "India",
+    },
+
+    countryCode: {
+      type: String, // IN, US, GB
+      required: true,
+      default: "IN",
+      uppercase: true,
+      trim: true,
+    },
+
+    callingCode: {
+      type: String, // +91, +1
+      required: true,
+      default: "+91",
+      trim: true,
     },
 
     avatarUrl: { type: String, default: null },
@@ -35,7 +51,13 @@ const userSchema = new mongoose.Schema(
     bankBalance: { type: Number, default: 0 },
     monthlyIncome: { type: Number, default: 0 },
 
-    phone: { type: String, trim: true },
+    /* 📞 E.164 FORMAT */
+    phone: {
+      type: String,
+      trim: true,
+      unique: true, // ⭐ strongly recommended
+      sparse: true, // allows existing users without phone
+    },
 
     upiHash: { type: String, default: null },
     bankNumberHash: { type: String, default: null },
@@ -47,7 +69,6 @@ const userSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
-
 
 userSchema.methods.setSensitiveData = async function ({ upi, bankNumber }) {
   if (upi) {
