@@ -18,6 +18,9 @@ const userRoutes = require("./routes/user");
 const goalRoutes = require("./routes/goals");
 const splitRoutes = require("./routes/split"); // UPDATED FOR NOTIFICATIONS
 const aiRoutes = require("./routes/aiChat");
+const notificationRoutes = require("./routes/notifications");
+
+
 
 const app = express();
 
@@ -85,7 +88,7 @@ app.use("/api/user", userRoutes);
 app.use("/api/goals", goalRoutes);
 app.use("/api/split", splitRoutes); // this now can push notifications
 app.use("/api/ai", aiRoutes);
-
+app.use("/notifications", notificationRoutes);
 // Root
 app.get("/", (req, res) => {
   res.send("Backend running ✔");

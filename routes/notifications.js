@@ -5,33 +5,40 @@ const auth = require("../middleware/auth");
 const Notification = require("../models/Notification");
 const User = require("../models/User");
 
-/* SAVE EXPO TOKEN */
+/* ---------------- SAVE EXPO TOKEN ---------------- */
 router.post("/save-token", auth, async (req, res) => {
   const { token } = req.body;
+  if (!token) return res.json({ ok: true });
 
   await User.findByIdAndUpdate(req.user._id, {
-    expoPushToken: token
+    expoPushToken: token,
   });
 
   res.json({ ok: true });
 });
 
-/* GET NOTIFICATIONS */
+/* ---------------- GET NOTIFICATIONS ---------------- */
 router.get("/", auth, async (req, res) => {
-  const list = await Notification.find({ userId: req.user._id })
-    .sort({ createdAt: -1 });
+  const notifications = await Notification.find({
+    userId: req.user._id,
+  }).sort({ createdAt: -1 });
 
-  res.json({ ok: true, notifications: list });
+  res.json({
+    ok: true,
+    notifications,
+  });
 });
 
-/* MARK ALL READ */
+/* ---------------- MARK ALL AS READ ---------------- */
 router.post("/mark-read", auth, async (req, res) => {
   await Notification.updateMany(
-    { userId: req.user._id },
-    { isRead: true }
+    { userId: req.user._id, isRead: false },
+    { $set: { isRead: true } }
   );
 
-  await User.findByIdAndUpdate(req.user._id, { unreadCount: 0 });
+  await User.findByIdAndUpdate(req.user._id, {
+    unreadCount: 0,
+  });
 
   res.json({ ok: true });
 });
