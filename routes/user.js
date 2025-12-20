@@ -18,16 +18,20 @@ router.get("/profile", auth, async (req, res) => {
       ok: true,
       profile: {
         name: user.name,
-        username: user.userName,
         email: user.email,
         phone: user.phone,
+
+        country: user.country,
+        countryCode: user.countryCode,
+        currency: user.currency,
 
         bankBalance: user.bankBalance || 0,
         monthlyIncome: user.monthlyIncome || 0,
 
-        hasUPI: !!user.upiHash,
-        hasBankAccount: !!user.bankNumberHash,
-      }
+        // ✅ SAFE FLAGS ONLY
+        hasUPI: Boolean(user.upiHash),
+        hasBankAccount: Boolean(user.bankNumberHash),
+      },
     });
   } catch (err) {
     res.status(500).json({ error: "Server error" });
