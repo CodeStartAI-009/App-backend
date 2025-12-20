@@ -88,7 +88,7 @@ app.use("/api/user", userRoutes);
 app.use("/api/goals", goalRoutes);
 app.use("/api/split", splitRoutes); // this now can push notifications
 app.use("/api/ai", aiRoutes);
-app.use("/notifications", notificationRoutes);
+app.use("/api/notifications", notificationRoutes);
 // Root
 app.get("/", (req, res) => {
   res.send("Backend running ✔");
