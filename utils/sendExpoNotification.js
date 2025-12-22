@@ -1,5 +1,3 @@
-const axios = require("axios");
-
 async function sendExpoNotification(token, title, message) {
   if (!token) return;
 
@@ -8,7 +6,6 @@ async function sendExpoNotification(token, title, message) {
     sound: "default",
     title,
     body: message,
+    channelId: "default", // 🔥 REQUIRED
   });
 }
-
-module.exports = { sendExpoNotification };
