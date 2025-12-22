@@ -1,4 +1,3 @@
-// routes/goals.js
 const express = require("express");
 const auth = require("../middleware/auth");
 const Goal = require("../models/Goal");
@@ -16,7 +15,7 @@ router.get("/", auth, async (req, res) => {
     const goals = await Goal.find({ userId: req.user._id });
     res.json({ ok: true, goals });
   } catch (err) {
-    console.error("GOAL GET ERROR:", err);
+    console.error("GET GOALS ERROR:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
@@ -35,7 +34,7 @@ router.get("/:id", auth, async (req, res) => {
 
     res.json({ ok: true, goal });
   } catch (err) {
-    console.error("GOAL GET SINGLE ERROR:", err);
+    console.error("GET GOAL ERROR:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
@@ -49,8 +48,9 @@ router.post("/create", auth, async (req, res) => {
   try {
     const { title, amount } = req.body;
 
-    if (!title || amount == null)
+    if (!title || amount == null) {
       return res.status(400).json({ error: "Title & amount required" });
+    }
 
     const goal = await Goal.create({
       userId: req.user._id,
@@ -60,31 +60,31 @@ router.post("/create", auth, async (req, res) => {
       completed: false,
     });
 
-    // Notify user
     pushAndSave(
       req.user._id,
       "Goal Created",
-      `Your new goal "${title}" has been created.`,
+      `Your goal "${title}" has been created.`,
       io
     );
 
     res.json({ ok: true, goal });
   } catch (err) {
-    console.error("GOAL CREATE ERROR:", err);
+    console.error("CREATE GOAL ERROR:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
 
 /* ============================================================================
-   ADD SAVINGS TO GOAL
+   ADD SAVING TO GOAL (✔ CORRECT WITH YOUR MODELS)
 ============================================================================ */
 router.post("/add-saving/:id", auth, async (req, res) => {
   const io = req.app.get("io");
 
   try {
     const amount = Number(req.body.amount);
-    if (!amount || amount <= 0)
+    if (!amount || amount <= 0) {
       return res.status(400).json({ error: "Valid amount required" });
+    }
 
     const goal = await Goal.findOne({
       _id: req.params.id,
@@ -93,48 +93,42 @@ router.post("/add-saving/:id", auth, async (req, res) => {
 
     const user = await User.findById(req.user._id);
 
-    if (!goal) return res.status(404).json({ error: "Goal not found" });
-    if (!user) return res.status(404).json({ error: "User not found" });
+    if (!goal || !user) {
+      return res.status(404).json({ error: "Not found" });
+    }
 
-    // Update saved amount
+    /* 1️⃣ update goal */
     goal.saved += amount;
+    goal.completed = goal.saved >= goal.amount;
 
-    // Create Expense log
+    /* 2️⃣ create expense (MATCHES Expense schema) */
     await Expense.create({
       userId: req.user._id,
       title: `Saving for ${goal.title}`,
       amount,
       category: "Goal Saving",
+      date: new Date(),
     });
 
-    // Deduct from user bank balance
+    /* 3️⃣ deduct bank balance */
     user.bankBalance = Number(user.bankBalance || 0) - amount;
-
-    // Check goal completion
-    if (goal.saved >= goal.amount) {
-      goal.completed = true;
-
-      pushAndSave(
-        req.user._id,
-        "Goal Completed",
-        `Congratulations! You completed your goal "${goal.title}".`,
-        io
-      );
-    } else {
-      pushAndSave(
-        req.user._id,
-        "Saving Added",
-        `₹${amount} added to your goal "${goal.title}".`,
-        io
-      );
-    }
 
     await goal.save();
     await user.save();
 
-    res.json({ ok: true, goal });
+    /* 4️⃣ notify */
+    pushAndSave(
+      req.user._id,
+      goal.completed ? "Goal Completed" : "Saving Added",
+      goal.completed
+        ? `🎉 You completed your goal "${goal.title}".`
+        : `₹${amount} added to your goal "${goal.title}".`,
+      io
+    );
+
+    res.json({ ok: true, goal, completed: goal.completed });
   } catch (err) {
-    console.error("SAVE TO GOAL ERROR:", err);
+    console.error("ADD SAVING ERROR:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
@@ -171,46 +165,62 @@ router.put("/update/:id", auth, async (req, res) => {
 
     res.json({ ok: true, goal });
   } catch (err) {
-    console.error("GOAL UPDATE ERROR:", err);
+    console.error("UPDATE GOAL ERROR:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
 
 /* ============================================================================
-   DELETE GOAL
+   DELETE GOAL (✔ FULLY FIXED & SAFE)
 ============================================================================ */
 router.delete("/delete/:id", auth, async (req, res) => {
   const io = req.app.get("io");
 
   try {
-    const goal = await Goal.findOne({
-      _id: req.params.id,
-      userId: req.user._id,
-    });
-
-    if (!goal) return res.status(404).json({ error: "Goal not found" });
-
     const userId = req.user._id;
 
-    // Remove all related expenses
+    const goal = await Goal.findOne({
+      _id: req.params.id,
+      userId,
+    });
+
+    const user = await User.findById(userId);
+
+    if (!goal || !user) {
+      return res.status(404).json({ error: "Not found" });
+    }
+
+    /* 1️⃣ refund saved amount */
+    const refund = Number(goal.saved || 0);
+    user.bankBalance = Number(user.bankBalance || 0) + refund;
+
+    /* 2️⃣ delete goal-related expenses */
     await Expense.deleteMany({
       userId,
+      category: "Goal Saving",
       title: { $regex: `Saving for ${goal.title}`, $options: "i" },
     });
 
-    // Delete goal
+    /* 3️⃣ delete goal */
     await Goal.findByIdAndDelete(goal._id);
 
+    await user.save();
+
+    /* 4️⃣ notify */
     pushAndSave(
       userId,
       "Goal Deleted",
-      `Your goal "${goal.title}" has been deleted.`,
+      `₹${refund} refunded after deleting "${goal.title}".`,
       io
     );
 
-    res.json({ ok: true, message: "Goal deleted successfully" });
+    res.json({
+      ok: true,
+      refunded: refund,
+      message: "Goal deleted and balance restored",
+    });
   } catch (err) {
-    console.error("GOAL DELETE ERROR:", err);
+    console.error("DELETE GOAL ERROR:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
