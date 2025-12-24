@@ -10,33 +10,45 @@ const router = express.Router();
    DAU / MAU
 ===================================================== */
 router.get("/usage", auth, async (req, res) => {
-  try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const monthStart = new Date();
-    monthStart.setDate(1);
-    monthStart.setHours(0, 0, 0, 0);
-
-    const dau = await AnalyticsEvent.distinct("userId", {
-      createdAt: { $gte: today },
-    });
-
-    const mau = await AnalyticsEvent.distinct("userId", {
-      createdAt: { $gte: monthStart },
-    });
-
-    res.json({
-      ok: true,
-      dau: dau.length,
-      mau: mau.length,
-    });
-  } catch (err) {
-    console.error("ADMIN ANALYTICS USAGE ERROR:", err);
-    res.status(500).json({ error: "Server error" });
-  }
-});
-
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+  
+      const yesterday = new Date(today);
+      yesterday.setDate(today.getDate() - 1);
+  
+      const monthStart = new Date();
+      monthStart.setDate(1);
+      monthStart.setHours(0, 0, 0, 0);
+  
+      const dauToday = await AnalyticsEvent.distinct("userId", {
+        createdAt: { $gte: today },
+      });
+  
+      const dauYesterday = await AnalyticsEvent.distinct("userId", {
+        createdAt: { $gte: yesterday, $lt: today },
+      });
+  
+      const mau = await AnalyticsEvent.distinct("userId", {
+        createdAt: { $gte: monthStart },
+      });
+  
+      const dau = dauToday.length;
+      const prev = dauYesterday.length || 1;
+  
+      const dauChange = (((dau - prev) / prev) * 100).toFixed(1);
+  
+      res.json({
+        ok: true,
+        dau,
+        mau: mau.length,
+        dauChange,
+      });
+    } catch (err) {
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+  
 /* =====================================================
    GET /api/admin/analytics/events
    Event counts (last 30 days)
