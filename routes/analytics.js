@@ -7,15 +7,13 @@ const router = express.Router();
 
 /* =====================================================
    POST /api/analytics/event
-   Track analytics events
+   Fire-and-forget analytics tracking
 ===================================================== */
 router.post("/event", auth, async (req, res) => {
   try {
     const { event, properties, timestamp } = req.body;
-
     if (!event) return res.sendStatus(400);
 
-    // Fire-and-forget write (never block app)
     AnalyticsEvent.create({
       userId: req.user._id,
       event,
@@ -26,7 +24,7 @@ router.post("/event", auth, async (req, res) => {
     res.sendStatus(200);
   } catch (err) {
     console.error("ANALYTICS TRACK ERROR:", err.message);
-    res.sendStatus(200); // NEVER break UX
+    res.sendStatus(200); // ❗ NEVER break UX
   }
 });
 

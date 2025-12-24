@@ -7,18 +7,15 @@ const analyticsEventSchema = new mongoose.Schema(
       ref: "User",
       index: true,
     },
-
     event: {
       type: String,
       required: true,
       index: true,
     },
-
     properties: {
       type: Object,
       default: {},
     },
-
     createdAt: {
       type: Date,
       default: Date.now,
@@ -28,7 +25,6 @@ const analyticsEventSchema = new mongoose.Schema(
   { versionKey: false }
 );
 
-// Compound index for fast queries
 analyticsEventSchema.index({ event: 1, createdAt: -1 });
 
 module.exports = mongoose.model("AnalyticsEvent", analyticsEventSchema);
