@@ -1,32 +1,32 @@
+// routes/analytics.js
 const express = require("express");
-const router = express.Router();
 const AnalyticsEvent = require("../models/AnalyticsEvent");
 const auth = require("../middleware/auth");
 
-/**
- * POST /api/analytics/event
- * Track analytics event
- */
+const router = express.Router();
+
+/* ---------------------------------------------
+   POST /api/analytics/event
+---------------------------------------------- */
 router.post("/event", auth, async (req, res) => {
   try {
     const { event, properties, timestamp } = req.body;
 
-    if (!event) {
-      return res.status(400).json({ error: "Event name required" });
-    }
+    if (!event) return res.sendStatus(400);
 
-    // Fire-and-forget analytics write
+    // Fire-and-forget write
     AnalyticsEvent.create({
-      userId: req.user.id,
+      userId: req.user._id,
       event,
       properties: properties || {},
       createdAt: timestamp ? new Date(timestamp) : Date.now(),
     });
 
-    return res.sendStatus(200);
+    res.sendStatus(200);
   } catch (err) {
     console.error("ANALYTICS ERROR:", err.message);
-    return res.sendStatus(200); // ❗ NEVER break app flow
+    // ❗ never block app
+    res.sendStatus(200);
   }
 });
 

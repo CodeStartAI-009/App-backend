@@ -20,7 +20,7 @@ const splitRoutes = require("./routes/split"); // UPDATED FOR NOTIFICATIONS
 const aiRoutes = require("./routes/aiChat");
 const notificationRoutes = require("./routes/notifications");
 const analyticsRoutes = require("./routes/analytics");
-
+const adminAnalyticsRoutes=require("./routes/adminAnalytics");
 
 const app = express();
 
@@ -90,6 +90,7 @@ app.use("/api/split", splitRoutes); // this now can push notifications
 app.use("/api/ai", aiRoutes);
 app.use("/api/notifications", notificationRoutes);
 // Root
+app.use("/api/admin/analytics", adminAnalyticsRoutes);
 
 
 app.use("/api/analytics", analyticsRoutes);

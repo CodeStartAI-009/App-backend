@@ -4,6 +4,7 @@ const auth = require("../middleware/auth");
 const Expense = require("../models/Expense");
 const Income = require("../models/Income");
 const User = require("../models/User");
+const trackServerEvent = require("../utils/trackServerEvent");
 
 const router = express.Router();
 
@@ -40,7 +41,6 @@ router.get("/recent", auth, async (req, res) => {
 
 /* ----------------------------------------------------
    GET /api/transactions/balance
-   (all activity: income + expense)
 ---------------------------------------------------- */
 router.get("/balance", auth, async (req, res) => {
   try {
@@ -76,29 +76,18 @@ router.get("/balance", auth, async (req, res) => {
 
 /* ----------------------------------------------------
    GET /api/transactions/single/:id
-   ✅ FIXED: Correct type detection
 ---------------------------------------------------- */
 router.get("/single/:id", auth, async (req, res) => {
   try {
     const { id } = req.params;
 
-    let tx = await Income.findById(id).lean();
-    if (tx) {
-      return res.json({
-        ok: true,
-        transaction: { ...tx, type: "income" },
-      });
-    }
+    let tx = await Income.findOne({ _id: id, userId: req.user._id }).lean();
+    if (tx) return res.json({ ok: true, transaction: { ...tx, type: "income" } });
 
-    tx = await Expense.findById(id).lean();
-    if (tx) {
-      return res.json({
-        ok: true,
-        transaction: { ...tx, type: "expense" },
-      });
-    }
+    tx = await Expense.findOne({ _id: id, userId: req.user._id }).lean();
+    if (tx) return res.json({ ok: true, transaction: { ...tx, type: "expense" } });
 
-    return res.status(404).json({ error: "Not found" });
+    res.status(404).json({ error: "Not found" });
   } catch (err) {
     console.error("SINGLE ERROR:", err);
     res.status(500).json({ error: "Server error" });
@@ -106,111 +95,83 @@ router.get("/single/:id", auth, async (req, res) => {
 });
 
 /* ----------------------------------------------------
-   PUT /api/transactions/update/:id
----------------------------------------------------- */
-router.put("/update/:id", auth, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { title, amount, category, type } = req.body;
-
-    const user = await User.findById(req.user._id);
-
-    let old = await Income.findById(id);
-    let source = "income";
-
-    if (!old) {
-      old = await Expense.findById(id);
-      source = "expense";
-    }
-
-    if (!old) {
-      return res.status(404).json({ error: "Transaction not found" });
-    }
-
-    // Reverse old balance impact
-    const oldAmount = Number(old.amount);
-    if (source === "income") {
-      user.bankBalance -= oldAmount;
-    } else {
-      user.bankBalance += oldAmount;
-    }
-
-    let updated;
-
-    if (type === "income") {
-      if (source === "income") {
-        updated = await Income.findByIdAndUpdate(
-          id,
-          { title, amount, category },
-          { new: true }
-        );
-      } else {
-        await Expense.findByIdAndDelete(id);
-        updated = await Income.create({
-          userId: req.user._id,
-          title,
-          amount,
-          category,
-        });
-      }
-      user.bankBalance += Number(amount);
-    } else {
-      if (source === "expense") {
-        updated = await Expense.findByIdAndUpdate(
-          id,
-          { title, amount, category },
-          { new: true }
-        );
-      } else {
-        await Income.findByIdAndDelete(id);
-        updated = await Expense.create({
-          userId: req.user._id,
-          title,
-          amount,
-          category,
-        });
-      }
-      user.bankBalance -= Number(amount);
-    }
-
-    await user.save();
-
-    res.json({ ok: true, updated });
-  } catch (err) {
-    console.error("UPDATE ERROR:", err);
-    res.status(500).json({ error: "Server error" });
-  }
-});
-
-/* ----------------------------------------------------
    DELETE /api/transactions/delete/:type/:id
+   🔒 SAFE DELETE
 ---------------------------------------------------- */
 router.delete("/delete/:type/:id", auth, async (req, res) => {
   try {
     const { type, id } = req.params;
-    const user = await User.findById(req.user._id);
+    const userId = req.user._id;
 
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    const previousBalance = Number(user.bankBalance || 0);
+
+    /* ---------------- EXPENSE DELETE ---------------- */
     if (type === "expense") {
-      const deleted = await Expense.findByIdAndDelete(id);
-      if (!deleted) return res.status(404).json({ error: "Not found" });
+      const expense = await Expense.findOne({ _id: id, userId });
+      if (!expense) return res.status(404).json({ error: "Not found" });
 
-      user.bankBalance += Number(deleted.amount);
+      // ❌ PROTECT SYSTEM EXPENSES
+      if (
+        expense.category === "Goal Saving" ||
+        expense.category === "split group"
+      ) {
+        return res.status(403).json({
+          error: "This transaction cannot be deleted",
+        });
+      }
+
+      await Expense.findByIdAndDelete(id);
+
+      const calculatedBalance = previousBalance + Number(expense.amount);
+      user.bankBalance = calculatedBalance;
       await user.save();
 
-      return res.json({ ok: true, deleted });
+      trackServerEvent(userId, "transaction_deleted", {
+        type: "expense",
+        amount: expense.amount,
+      });
+
+      // 🔥 integrity check
+      if (user.bankBalance !== calculatedBalance) {
+        trackServerEvent(userId, "balance_mismatch", {
+          expected: calculatedBalance,
+          actual: user.bankBalance,
+        });
+      }
+
+      return res.json({ ok: true, deleted: expense });
     }
 
+    /* ---------------- INCOME DELETE ---------------- */
     if (type === "income") {
-      const deleted = await Income.findByIdAndDelete(id);
-      if (!deleted) return res.status(404).json({ error: "Not found" });
+      const income = await Income.findOne({ _id: id, userId });
+      if (!income) return res.status(404).json({ error: "Not found" });
 
-      user.bankBalance -= Number(deleted.amount);
+      await Income.findByIdAndDelete(id);
+
+      const calculatedBalance = previousBalance - Number(income.amount);
+      user.bankBalance = calculatedBalance;
       await user.save();
 
-      return res.json({ ok: true, deleted });
+      trackServerEvent(userId, "transaction_deleted", {
+        type: "income",
+        amount: income.amount,
+      });
+
+      if (user.bankBalance !== calculatedBalance) {
+        trackServerEvent(userId, "balance_mismatch", {
+          expected: calculatedBalance,
+          actual: user.bankBalance,
+        });
+      }
+
+      return res.json({ ok: true, deleted: income });
     }
 
-    res.status(400).json({ error: "Invalid type" });
+    return res.status(400).json({ error: "Invalid type" });
   } catch (err) {
     console.error("DELETE ERROR:", err);
     res.status(500).json({ error: "Server error" });
