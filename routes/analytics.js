@@ -5,31 +5,29 @@ const auth = require("../middleware/auth");
 
 const router = express.Router();
 
-// GET /api/admin/analytics/events
-router.get("/events", auth, async (req, res) => {
-    try {
-      const since = new Date();
-      since.setDate(since.getDate() - 30); // last 30 days
-  
-      const events = await AnalyticsEvent.aggregate([
-        { $match: { createdAt: { $gte: since } } },
-        {
-          $group: {
-            _id: "$event",
-            count: { $sum: 1 },
-          },
-        },
-        { $sort: { count: -1 } },
-      ]);
-  
-      res.json({
-        ok: true,
-        events,
-      });
-    } catch (err) {
-      console.error("EVENT STATS ERROR:", err);
-      res.status(500).json({ error: "Server error" });
-    }
-  });
-  
+/* =====================================================
+   POST /api/analytics/event
+   Track analytics events
+===================================================== */
+router.post("/event", auth, async (req, res) => {
+  try {
+    const { event, properties, timestamp } = req.body;
+
+    if (!event) return res.sendStatus(400);
+
+    // Fire-and-forget write (never block app)
+    AnalyticsEvent.create({
+      userId: req.user._id,
+      event,
+      properties: properties || {},
+      createdAt: timestamp ? new Date(timestamp) : Date.now(),
+    });
+
+    res.sendStatus(200);
+  } catch (err) {
+    console.error("ANALYTICS TRACK ERROR:", err.message);
+    res.sendStatus(200); // NEVER break UX
+  }
+});
+
 module.exports = router;
